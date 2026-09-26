@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Motor de Inventario - Demo Concurrencia</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-8 flex flex-col items-center">
+
+  <div class="max-w-3xl w-full">
+    <header class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-sky-400">⚡ Motor de Gestión de Inventario</h1>
+      <p class="text-slate-400 mt-1">Demostración de Bloqueo Optimista con JPA (@Version) y PostgreSQL</p>
+    </header>
+
+    <!-- Tarjeta del Producto -->
+    <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-xl mb-6">
+      <div class="flex justify-between items-start">
+        <div>
+          <span id="sku" class="text-xs bg-sky-950 text-sky-400 px-2.5 py-1 rounded font-mono font-semibold">Cargando...</span>
+          <h2 class="text-xl font-bold mt-2 text-white">iPhone 15 Pro 128GB</h2>
+          <p class="text-sm text-slate-400">Producto de prueba con control de versiones</p>
+        </div>
+        <button onclick="cargarStock()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded text-slate-200 transition">
+          🔄 Actualizar
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4 mt-6">
+        <div class="bg-slate-900/80 p-4 rounded-lg border border-slate-800 text-center">
+          <span class="text-xs text-slate-400 uppercase font-bold tracking-wider">Stock Disponible</span>
+          <p id="stock" class="text-3xl font-extrabold text-emerald-400 mt-1">--</p>
+        </div>
+        <div class="bg-slate-900/80 p-4 rounded-lg border border-slate-800 text-center">
+          <span class="text-xs text-slate-400 uppercase font-bold tracking-wider">Stock Reservado</span>
+          <p id="reservado" class="text-3xl font-extrabold text-amber-400 mt-1">--</p>
+        </div>
+        <div class="bg-slate-900/80 p-4 rounded-lg border border-slate-800 text-center">
+          <span class="text-xs text-slate-400 uppercase font-bold tracking-wider">Versión (@Version)</span>
+          <p id="version" class="text-3xl font-extrabold text-sky-400 mt-1">--</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel de Acciones -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <!-- Compra normal -->
+      <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+        <h3 class="font-bold text-white mb-2">Descuento Individual</h3>
+        <p class="text-xs text-slate-400 mb-4">Ejecuta una petición estándar descontando stock e incrementando la versión.</p>
+        <div class="flex gap-2">
+          <input id="cantInput" type="number" min="1" value="1" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-20 text-center" />
+          <button onclick="descontarIndividual()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 font-semibold py-2 px-4 rounded text-sm transition">
+            Descontar Stock
+          </button>
+        </div>
+      </div>
+
+      <!-- Test de Concurrencia -->
+      <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+        <h3 class="font-bold text-rose-400 mb-2">Simular Ataque Concurrente</h3>
+        <p class="text-xs text-slate-400 mb-4">Dispara 10 peticiones en paralelo en el mismo milisegundo para forzar colisiones.</p>
+        <button onclick="simularConcurrencia()" class="w-full bg-rose-600 hover:bg-rose-500 font-semibold py-2 px-4 rounded text-sm transition">
+          💥 Lanzar 10 Peticiones Simultáneas
+        </button>
+      </div>
+    </div>
+
+    <!-- Registro de Eventos -->
+    <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold text-sm text-slate-300">Consola de Respuestas HTTP</h3>
+        <button onclick="document.getElementById('log').innerHTML = ''" class="text-xs text-slate-500 hover:text-slate-300">Limpiar</button>
+      </div>
+      <div id="log" class="bg-slate-950 p-4 rounded-lg font-mono text-xs text-slate-300 h-48 overflow-y-auto space-y-1 border border-slate-900">
+        <div class="text-slate-500">// Esperando acciones...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = '/api/v1/inventario';
+
+    function addLog(mensaje, tipo = 'info') {
+      const log = document.getElementById('log');
+      const item = document.createElement('div');
+      const time = new Date().toLocaleTimeString();
+      
+      const colores = {
+        exito: 'text-emerald-400',
+        error: 'text-rose-400',
+        conflicto: 'text-amber-400 font-semibold',
+        info: 'text-sky-400'
+      };
+
+      item.className = colores[tipo] || 'text-slate-300';
+      item.textContent = `[${time}] ${mensaje}`;
+      log.prepend(item);
+    }
+
+    async function cargarStock() {
+      try {
+        const res = await fetch(`${API_URL}/1`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        document.getElementById('sku').textContent = data.sku;
+        document.getElementById('stock').textContent = data.stockDisponible;
+        document.getElementById('reservado').textContent = data.stockReservado;
+        document.getElementById('version').textContent = data.version;
+        addLog(`Stock consultado: ${data.stockDisponible} unidades | Versión actual: ${data.version}`, 'info');
+      } catch (err) {
+        addLog(`Error al consultar stock: ${err.message}`, 'error');
+      }
+    }
+
+    async function descontarIndividual() {
+      const cant = parseInt(document.getElementById('cantInput').value) || 1;
+      try {
+        const res = await fetch(`${API_URL}/descontar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productoId: 1, cantidad: cant })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          addLog(`✅ Descuento exitoso: Nuevo stock ${data.stockDisponible} (Versión ${data.version})`, 'exito');
+          cargarStock();
+        } else {
+          addLog(`❌ Error HTTP ${res.status}: ${data.mensaje || 'Falló la operación'}`, 'error');
+        }
+      } catch (err) {
+        addLog(`Error de conexión: ${err.message}`, 'error');
+      }
+    }
+
+    async function simularConcurrencia() {
+      addLog('🚀 Disparando 10 peticiones simultáneas...', 'info');
+      
+      const promesas = Array.from({ length: 10 }, (_, i) => 
+        fetch(`${API_URL}/descontar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productoId: 1, cantidad: 1 })
+        }).then(async res => ({
+          id: i + 1,
+          status: res.status,
+          data: await res.json()
+        }))
+      );
+
+      const resultados = await Promise.all(promesas);
+
+      let exitos = 0;
+      let conflictos = 0;
+      let otros = 0;
+
+      resultados.forEach(r => {
+        if (r.status === 200) {
+          exitos++;
+          addLog(`Hilo #${r.id} completó la compra (Stock restante: ${r.data.stockDisponible}, Versión: ${r.data.version})`, 'exito');
+        } else if (r.status === 409) {
+          conflictos++;
+          addLog(`⚠️ Hilo #${r.id} RECHAZADO por Bloqueo Optimista (409 Conflict)`, 'conflicto');
+        } else {
+          otros++;
+          addLog(`Hilo #${r.id} falló: ${r.data.mensaje}`, 'error');
+        }
+      });
+
+      addLog(`📊 Fin de simulación -> Éxitos: ${exitos} | Colisiones (@Version): ${conflictos}`, 'info');
+      cargarStock();
+    }
+
+    window.onload = cargarStock;
+  </script>
+</body>
+</html>

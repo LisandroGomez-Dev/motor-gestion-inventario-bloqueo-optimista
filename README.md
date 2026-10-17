@@ -195,4 +195,4 @@ El cliente web incluye un simulador de estrés que lanza **peticiones asíncrona
 
 ## 👨‍💻 Autor
 
-- **Lisandro Gómez** - [@LisandroGomez10](https://github.com/LisandroGomez10)
+- **Lisandro Gómez** - [@LisandroGomez-Dev](https://github.com/LisandroGomez-Dev)

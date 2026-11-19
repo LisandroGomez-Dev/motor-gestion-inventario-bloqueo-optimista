@@ -1,16 +1,26 @@
-# React + Vite
+# Cliente web – Simulador de Concurrencia
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Frontend en **React 18 + Vite + Tailwind CSS** del Motor de Gestión de Inventario. Permite consultar el stock, descontar unidades, ajustar el stock manualmente y disparar 10 peticiones simultáneas para observar cómo el bloqueo optimista responde con `409 Conflict`.
 
-Currently, two official plugins are available:
+## Requisitos
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 18+ y npm
+- Backend corriendo en `http://localhost:8080` (ver el README principal del repositorio)
 
-## React Compiler
+## Uso
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run dev
+```
 
-## Expanding the Oxlint configuration
+La aplicación queda disponible en `http://localhost:5173`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Scripts
+
+| Comando | Descripción |
+| :--- | :--- |
+| `npm run dev` | Servidor de desarrollo con recarga en caliente |
+| `npm run build` | Compilación de producción |
+| `npm run lint` | Análisis estático con Oxlint |
+| `npm run preview` | Vista previa de la compilación |

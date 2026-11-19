@@ -37,7 +37,9 @@ SET stock_disponible = :nuevoStock, version = version + 1
 WHERE id = :id AND version = :versionLeida;
 ```
 
-Si la condición `WHERE version = :versionLeida` no coincide (0 filas actualizadas), se lanza una excepción de optimización (por ejemplo, `ObjectOptimisticLockingFailureException` en Spring Data) y la operación debe reintentar o informar el conflicto al usuario.
+En este proyecto Hibernate genera esa verificación automáticamente gracias a `@Version`: cada descuento lee el inventario, valida el stock y guarda dentro de una misma transacción. Si otra transacción modificó la fila en el medio, el `UPDATE` afecta 0 filas y Spring lanza `OptimisticLockingFailureException`, que el `GlobalExceptionHandler` traduce a `409 Conflict` para que el cliente reintente.
+
+> **Nota:** el cliente no envía la versión en el request. La detección ocurre del lado del servidor, entre las transacciones concurrentes que compiten por el mismo registro.
 
 ---
 
@@ -97,7 +99,7 @@ Si la condición `WHERE version = :versionLeida` no coincide (0 filas actualizad
     │   │   └── resources/
     │   │       ├── application.yml     # Configuración de base de datos y Flyway
     │   │       └── db/migration/       # Scripts SQL V1 (esquema) y V2 (seed de prueba)
-    │   └── test/                       # Tests unitarios y de integración
+    │   └── test/                       # Prueba de arranque del contexto (contextLoads)
     └── inventory-client/               # Aplicación Frontend React
         ├── package.json
         ├── vite.config.js
@@ -172,8 +174,7 @@ Abre en tu navegador `http://localhost:5173` para acceder al panel de control y 
 ```json
 {
   "productoId": 1,
-  "cantidad": 2,
-  "versionEsperada": 0
+  "cantidad": 2
 }
 ```
 
@@ -181,21 +182,23 @@ Abre en tu navegador `http://localhost:5173` para acceder al panel de control y 
 
 ```json
 {
-  "timestamp": "2026-09-26T00:30:00Z",
-  "status": 409,
-  "error": "Conflict",
-  "message": "Conflicto de concurrencia: el registro fue modificado por otra transacción en paralelo. Por favor, reintente la operación con la versión actualizada."
+  "estado": 409,
+  "mensaje": "Conflicto de concurrencia: el stock fue modificado por otra transacción simultánea. Por favor, reintente.",
+  "timestamp": "2026-09-26T00:30:00",
+  "detalles": []
 }
 ```
+
+Si el stock no alcanza, la API responde `400 Bad Request` con un mensaje del tipo `Stock insuficiente. Disponible: X, Solicitado: Y`.
 
 ---
 
 ## 🧪 Simulación de Concurrencia desde el Frontend
 
-El cliente web incluye un simulador de estrés que lanza peticiones asíncronas concurrentes (`Promise.all`) con la misma versión leída:
+El cliente web incluye un simulador de estrés que lanza 10 peticiones asíncronas simultáneas (`Promise.all`) de descuento sobre el mismo producto:
 
-1. Observa el comportamiento: sólo la primera solicitud que persiste con la versión esperada tiene éxito (`200 OK`).
-2. Las demás solicitudes que compiten por el mismo recurso recibirán `409 Conflict` y pueden reintentar según la lógica de cliente.
+1. Observá el comportamiento: las transacciones que logran persistir sin que otra haya modificado el registro antes tienen éxito (`200 OK`).
+2. Las que compiten por el mismo registro y pierden la carrera reciben `409 Conflict` y pueden reintentar según la lógica de cliente.
 3. La interfaz muestra en tiempo real los éxitos, conflictos y la actualización reactiva del stock y la versión.
 
 ---
@@ -204,21 +207,33 @@ El cliente web incluye un simulador de estrés que lanza peticiones asíncronas 
 
 Coloca los scripts SQL en `src/main/resources/db/migration` con el prefijo `V{n}__{descripcion}.sql`. Flyway los aplicará automáticamente al arrancar la aplicación.
 
-Ejemplo mínimo de `V1__initial_schema.sql`:
+Esquema real de `V1__initial_schema.sql` (resumido):
 
 ```sql
 CREATE TABLE producto (
   id BIGSERIAL PRIMARY KEY,
-  nombre VARCHAR(255) NOT NULL
+  sku VARCHAR(64) NOT NULL UNIQUE,
+  nombre VARCHAR(255) NOT NULL,
+  descripcion TEXT,
+  precio_unitario NUMERIC(12, 2) NOT NULL
 );
 
 CREATE TABLE inventario (
   id BIGSERIAL PRIMARY KEY,
-  producto_id BIGINT NOT NULL REFERENCES producto(id),
-  stock_disponible INT NOT NULL CHECK (stock_disponible >= 0),
-  version INT NOT NULL DEFAULT 0
+  producto_id BIGINT NOT NULL UNIQUE REFERENCES producto(id) ON DELETE CASCADE,
+  stock_disponible INT NOT NULL DEFAULT 0 CHECK (stock_disponible >= 0),
+  stock_reservado INT NOT NULL DEFAULT 0 CHECK (stock_reservado >= 0),
+  version BIGINT NOT NULL DEFAULT 0
 );
 ```
+
+---
+
+## ⚠️ Limitaciones Conocidas
+
+- **Tests:** por ahora solo existe la prueba de arranque del contexto (`contextLoads`). Falta una prueba de integración que dispare descuentos concurrentes y verifique que no se produce sobreventa.
+- **Reinicio de versión:** `PUT /api/v1/inventario/stock` restablece el stock y reinicia la versión a 0 para dejar un estado conocido en la demo; en un sistema real no convendría reiniciar la versión.
+- **Sin reintentos automáticos:** ante un `409` el backend no reintenta; la decisión queda del lado del cliente.
 
 ---
 
@@ -236,7 +251,3 @@ Si querés colaborar:
 ## 👨‍💻 Autor
 
 - **Lisandro Gómez** - [@LisandroGomez-Dev](https://github.com/LisandroGomez-Dev)
-
----
-
-Si querés, puedo también actualizar el README del cliente (inventory-client) para que esté en español y tenga instrucciones específicas; decime si lo hago.

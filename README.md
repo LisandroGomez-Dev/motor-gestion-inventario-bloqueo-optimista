@@ -13,6 +13,14 @@ Sistema integral de gestión de inventario de alta concurrencia diseñado para r
 
 ---
 
+## 📋 Análisis Funcional e Integridad de Datos
+
+- **Escenarios críticos:** Identificación de operaciones concurrentes de descuento de stock que generan sobreventa y pérdida de consistencia contable.
+- **Reglas transaccionales:** Definición de control optimista por versión de registro y respuesta explícita ante conflictos (`HTTP 409 Conflict`) con mensajes claros para el usuario.
+- **Validación en tiempo real:** Simulador web en React para probar casos borde y verificar el comportamiento del sistema ante colisiones simultáneas.
+
+---
+
 ## 🎯 Problema que resuelve
 
 En sistemas de e-commerce y gestión de stock con alto tráfico, múltiples transacciones pueden intentar descontar stock simultáneamente sobre un mismo producto.
